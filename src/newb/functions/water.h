@@ -48,6 +48,14 @@ vec4 nlWater(
     }
   #endif
 
+  // BSL Sunlight Specular: Clean, soft white specular highlight
+  if (env.dayFactor > -0.1 && lit.y > 0.75) {
+    vec3 sunV = vec3(env.sunDir.x, -env.sunDir.y, env.sunDir.z);
+    float sunDot = max(dot(viewDir, sunV), 0.0);
+    float specHighlight = pow(sunDot, 64.0) * (1.0 - 0.9 * env.rainFactor);
+    waterRefl += vec3(1.0, 0.98, 0.95) * (specHighlight * 3.5);
+  }
+
   // torch light reflection
   float tc = 0.5+0.5*sin(16.0*viewDir.x)*sin(16.0*viewDir.z);
   waterRefl += torchColor*NL_TORCHLIGHT_INTENSITY*lit.x*tc*tc;
@@ -63,11 +71,12 @@ vec4 nlWater(
   #endif
 
   cosR = abs(cosR);
-  float fresnel = calculateFresnel(cosR, 0.07);
+  float fresnel = calculateFresnel(cosR, 0.08);
   float opacity = 1.0-cosR;
 
-  color.rgb *= 0.22*NL_WATER_TINT*(1.0-0.8*fresnel);
-  color.a = mix(COLOR.a*NL_WATER_TRANSPARENCY, 1.0, opacity*opacity);
+  // BSL Water Surface Color & Clarity (~65% transparency in shallow water)
+  color.rgb = mix(color.rgb, NL_WATER_TINT * 0.75, 0.85) * (1.0 - 0.7 * fresnel);
+  color.a = mix(COLOR.a * BSL_WATER_SURFACE.a, 1.0, opacity*opacity);
 
   #ifdef NL_WATER_WAVE
     if (camDist < 14.0) {

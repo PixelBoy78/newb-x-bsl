@@ -50,9 +50,11 @@ void main() {
       pos.y *= (NL_CLOUD0_THICKNESS + rain*(NL_CLOUD0_RAIN_THICKNESS - NL_CLOUD0_THICKNESS));
       worldPos = mul(model, vec4(pos, 1.0)).xyz;
 
-      color.rgb = skycol.zenith + skycol.horizonEdge;
-      color.rgb += dot(color.rgb, vec3(0.3,0.4,0.3))*a_position.y;
-      color.rgb *= 1.0 - 0.8*rain;
+      // BSL Dual-Tone Cloud Shading
+      vec3 bottomCol = mix(vec3(0.46, 0.52, 0.62), skycol.zenith * 0.85, 0.35);
+      vec3 topCol = mix(skycol.horizonEdge * 0.7, vec3(1.15, 1.08, 0.96), 0.65);
+      color.rgb = mix(bottomCol, topCol, clamp(a_position.y * 0.5 + 0.5, 0.0, 1.0));
+      color.rgb *= 1.0 - 0.75*rain;
       color.rgb = colorCorrection(color.rgb);
       color.a = NL_CLOUD0_OPACITY * fog_fade(worldPos.xyz);
 

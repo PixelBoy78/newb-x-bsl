@@ -26,13 +26,18 @@ float cloudNoise2D(vec2 p, highp float t, float rain) {
   return n*n;
 }
 
-// simple clouds
+// simple clouds (BSL Stylized Dual-Tone Shading)
 vec4 renderCloudsSimple(nl_skycolor skycol, vec3 pos, highp float t, float rain) {
   pos.xz *= NL_CLOUD1_SCALE;
   float d = cloudNoise2D(pos.xz, t, rain);
-  vec4 col = vec4(skycol.horizonEdge + skycol.zenith, smoothstep(0.1,0.6,d));
-  col.rgb += 1.5*dot(col.rgb, vec3(0.3,0.4,0.3))*smoothstep(0.6,0.2,d)*col.a;
-  col.rgb *= 1.0 - 0.8*rain;
+
+  vec3 bottomCol = mix(vec3(0.46, 0.52, 0.62), skycol.zenith * 0.85, 0.35);
+  vec3 topCol = mix(skycol.horizonEdge * 0.7, vec3(1.15, 1.08, 0.96), 0.65);
+  float topShade = smoothstep(0.55, 0.18, d);
+  vec3 cloudColor = mix(bottomCol, topCol, topShade);
+
+  vec4 col = vec4(cloudColor, smoothstep(0.1, 0.6, d));
+  col.rgb *= 1.0 - 0.75 * rain;
   return col;
 }
 
@@ -94,9 +99,14 @@ vec4 renderCloudsRounded(
     d.y = 1.0 - d.y;
   }
 
-  vec4 col = vec4(zenithCol + horizonCol, d.x);
-  col.rgb += dot(col.rgb, vec3(0.3,0.4,0.3))*d.y*d.y;
-  col.rgb *= 1.0 - 0.8*rain;
+  // BSL Stylized Dual-Tone Shading:
+  // d.y is normalized height across the cloud slice (0.0 bottom, 1.0 top)
+  vec3 bottomCol = mix(vec3(0.46, 0.52, 0.62), zenithCol * 0.85, 0.35);
+  vec3 topCol = mix(horizonCol * 0.7, vec3(1.15, 1.08, 0.96), 0.65);
+  vec3 cloudColor = mix(bottomCol, topCol, d.y * d.y);
+
+  vec4 col = vec4(cloudColor, d.x);
+  col.rgb *= 1.0 - 0.75 * rain;
   return col;
 }
 

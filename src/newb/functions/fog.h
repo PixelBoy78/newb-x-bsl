@@ -3,13 +3,18 @@
 
 float nlRenderFogFade(float relativeDist, vec3 FOG_COLOR, vec2 FOG_CONTROL) {
   #ifdef NL_FOG
-    float fade = smoothstep(FOG_CONTROL.x, FOG_CONTROL.y, relativeDist);
+    // BSL Atmospheric Exponential Fog (soft transition without harsh banding)
+    float fogStart = FOG_CONTROL.x * 0.55;
+    float fogEnd = FOG_CONTROL.y;
+    float d = clamp((relativeDist - fogStart) / (fogEnd - fogStart), 0.0, 1.0);
+    float fade = 1.0 - exp(-d * d * 3.0);
+    fade = smoothstep(0.0, 1.0, fade);
 
-    // misty effect
-    float density = NL_MIST_DENSITY*(19.0 - 18.0*FOG_COLOR.g);
-    fade += (1.0-fade)*(0.3-0.3*exp(-relativeDist*relativeDist*density));
+    // Soft atmospheric mist depth
+    float density = NL_MIST_DENSITY * (14.0 - 13.0 * FOG_COLOR.g);
+    fade += (1.0 - fade) * (0.28 - 0.28 * exp(-relativeDist * relativeDist * density));
 
-    return NL_FOG * fade;
+    return clamp(NL_FOG * fade, 0.0, 1.0);
   #else
     return 0.0;
   #endif

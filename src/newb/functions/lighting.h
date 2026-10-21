@@ -93,9 +93,16 @@ vec3 nlLighting(
     // direct light from top
     light = (NL_SUNLIGHT_INTENSITY*shadow*sunLightAttenuation)*sunLightTint(env.dayFactor, env.rainFactor);
 
-    // sky ambient
+    // sky ambient & BSL cool blue shadow fill
     lum = luminance(light);
-    light += (skycol.horizon + skycol.zenith)*(uv1.y/(1.0+lum));
+    #ifdef NL_SHADOW_FILL_COL
+      vec3 ambientCol = mix(NL_SHADOW_FILL_COL * 1.6, skycol.horizon + skycol.zenith, 0.4);
+      ambientCol = mix(ambientCol, NL_NIGHT_MOONLIGHT_COL * 2.2, nightFactor);
+      ambientCol = mix(ambientCol, vec3_splat(dot(ambientCol, vec3_splat(0.33))), env.rainFactor);
+      light += ambientCol * (uv1.y / (1.0 + lum));
+    #else
+      light += (skycol.horizon + skycol.zenith)*(uv1.y/(1.0+lum));
+    #endif
 
   }
 
@@ -167,9 +174,16 @@ vec3 nlEntityLighting(nl_skycolor skycol, nl_environment env, vec3 pos, vec4 nor
     vec3 N = normalize(mul(world, normal)).xyz;
     light *= 0.9 + max(N.y, 0.0);
 
-    // sky ambient
+    // sky ambient & BSL cool blue shadow fill
     lum = luminance(light);
-    light += (skycol.horizon + skycol.zenith)*(l/(1.0+lum));
+    #ifdef NL_SHADOW_FILL_COL
+      vec3 ambientCol = mix(NL_SHADOW_FILL_COL * 1.6, skycol.horizon + skycol.zenith, 0.4);
+      ambientCol = mix(ambientCol, NL_NIGHT_MOONLIGHT_COL * 2.2, nightFactor);
+      ambientCol = mix(ambientCol, vec3_splat(dot(ambientCol, vec3_splat(0.33))), env.rainFactor);
+      light += ambientCol * (l / (1.0 + lum));
+    #else
+      light += (skycol.horizon + skycol.zenith)*(l/(1.0+lum));
+    #endif
   }
 
   // torch light
