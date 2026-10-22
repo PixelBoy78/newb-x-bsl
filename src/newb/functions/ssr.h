@@ -1,7 +1,15 @@
 #ifndef SSR_H
 #define SSR_H
 
-#if defined(TRANSPARENT) && defined(NL_SSR)
+#if defined(BGFX_SHADER_TYPE_FRAGMENT)
+  #if BGFX_SHADER_TYPE_FRAGMENT && defined(TRANSPARENT) && defined(NL_SSR)
+    #define NL_SSR_ACTIVE 1
+  #endif
+#elif !defined(BGFX_SHADER_TYPE_VERTEX) && defined(TRANSPARENT) && defined(NL_SSR)
+  #define NL_SSR_ACTIVE 1
+#endif
+
+#ifdef NL_SSR_ACTIVE
 
 SAMPLER2D_AUTOREG(s_ScreenBuffer);
 SAMPLER2D_AUTOREG(s_SceneDepthBuffer);
@@ -42,7 +50,9 @@ void nlApplySSR(
   float fogAlpha
 ) {
   vec3 viewDir = normalize(wPos - camPos);
-  vec3 faceNormal = normalize(cross(dFdx(wPos), dFdy(wPos)));
+  vec3 dX = vec3(dFdx(wPos.x), dFdx(wPos.y), dFdx(wPos.z));
+  vec3 dY = vec3(dFdy(wPos.x), dFdy(wPos.y), dFdy(wPos.z));
+  vec3 faceNormal = normalize(cross(dX, dY));
 
   // Water screen-space reflections on horizontal top faces
   if (abs(faceNormal.y) > 0.85 && viewDir.y < 0.0) {
@@ -170,6 +180,6 @@ void nlApplySSR(
   #endif
 }
 
-#endif // TRANSPARENT && NL_SSR
+#endif // NL_SSR_ACTIVE
 
 #endif // SSR_H
