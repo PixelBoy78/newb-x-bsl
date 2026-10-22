@@ -253,7 +253,8 @@
 /* Screen-Space Reflections & Shoreline Foam (CustomBuffers mod for LeviLauncher) */
 #define NL_SSR_STRENGTH 0.92      // 0.0 off ~ 1.0 full reflection
 #define NL_SSR_RIPPLE 0.040       // Wave ripple displacement (subtle for clear mirror finish)
-#define NL_SSR_BLUR 0.0           // 0.0 razor sharp (Rinloid style) ~ 0.005 soft blur
+//#define NL_SSR_SOFT_BLUR        // [toggle] soft blur reflection (commented out for razor-sharp Rinloid clarity)
+#define NL_SSR_BLUR 0.003         // Blur radius when NL_SSR_SOFT_BLUR is enabled
 #define NL_SSR_TINT 0.15          // 0.0 pure mirror ~ 0.5 water color tint
 #define NL_SSR_EDGE_FADE 0.20     // Edge vignette fade distance into sky
 #define NL_SSR_REFLECT_DIST 32.0  // Maximum ray projection distance

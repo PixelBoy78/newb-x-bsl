@@ -113,8 +113,8 @@ void nlApplySSR(
     float edgeFactor = 1.0 - smoothstep(0.0, NL_SSR_EDGE_FADE, max(over, 0.0));
     vec2 m = clamp(hitUV, 0.002, 0.998);
 
-    // Sample ScreenBuffer: 0.0 blur = razor sharp crystal-clear reflection (Rinloid style)
-    #if defined(NL_SSR_BLUR) && NL_SSR_BLUR > 0.0001
+    // Sample ScreenBuffer: razor sharp crystal-clear reflection by default (Rinloid style)
+    #ifdef NL_SSR_SOFT_BLUR
       vec2 o = vec2(NL_SSR_BLUR, NL_SSR_BLUR);
       vec3 screenRefl = texture2D(s_ScreenBuffer, m).rgb * 0.4
         + texture2D(s_ScreenBuffer, clamp(m + vec2(o.x, o.y), 0.002, 0.998)).rgb * 0.15
