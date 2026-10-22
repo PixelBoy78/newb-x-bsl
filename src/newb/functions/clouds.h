@@ -41,30 +41,52 @@ vec4 renderCloudsSimple(nl_skycolor skycol, vec3 pos, highp float t, float rain)
   return col;
 }
 
-// rounded clouds
-// rounded clouds 3D density map
-float cloudDf(vec3 pos, float rain, vec2 boxiness) {
-  boxiness *= 0.999;
-  vec2 p0 = floor(pos.xz);
-  vec2 u = max((pos.xz-p0-boxiness.x)/(1.0-boxiness.x), 0.0);
-  u *= u*(3.0 - 2.0*u);
+// Fast 2D value noise for cumulus coverage
+float bslNoise2D(vec2 p) {
+  vec2 p0 = floor(p);
+  vec2 u = p - p0;
+  u = u * u * (3.0 - 2.0 * u);
 
-  vec4 r = vec4(rand(p0), rand(p0+vec2(1.0,0.0)), rand(p0+vec2(1.0,1.0)), rand(p0+vec2(0.0,1.0)));
-  r = smoothstep(0.1001+0.2*rain, 0.1+0.2*rain*rain, r); // rain transition
-
-  float n = mix(mix(r.x,r.y,u.x), mix(r.w,r.z,u.x), u.y);
-
-  // round y
-  n *= 1.0 - 1.5*smoothstep(boxiness.y, 2.0 - boxiness.y, 2.0*abs(pos.y-0.5));
-
-
-  n = max(1.25*(n-0.2), 0.0); // smoothstep(0.2, 1.0, n)
-  n *= n*(3.0 - 2.0*n);
+  float n = mix(
+    mix(fastRand(p0), fastRand(p0 + vec2(1.0, 0.0)), u.x),
+    mix(fastRand(p0 + vec2(0.0, 1.0)), fastRand(p0 + vec2(1.0, 1.0)), u.x),
+    u.y
+  );
   return n;
 }
 
+// BSL Cumulus 3D Density Map (Capt Tatsu Puffy Billow Aesthetic)
+// Organic puffy cumulus lobes with flat base and billowy domes
+float cloudDf(vec3 pos, float rain, vec2 boxiness) {
+  vec2 p = pos.xz;
+
+  // Macro-structure coverage (creates cloud clumps vs open blue sky)
+  float cov1 = bslNoise2D(p * 0.7);
+  float cov2 = bslNoise2D(p * 1.5 + vec2(4.3, 8.1));
+  float coverage = cov1 * 0.65 + cov2 * 0.35;
+
+  // Worley / Voronoi cellular billows (creates puffy cumulus lobes)
+  float v1 = fastVoronoi2(p * 1.25, 1.8);
+  float v2 = fastVoronoi2(p * 2.7 + vec2(1.7, 3.1), 1.4);
+  float billows = max(v1 * 0.65 + v2 * 0.35, 0.0);
+
+  // Combine coverage and puffy lobes
+  float shape = coverage * 0.50 + billows * 0.50;
+
+  // Real cumulus vertical profile: flat bottom base, rounded billowing dome
+  float base = smoothstep(0.02, 0.22, pos.y);
+  float dome = smoothstep(0.98, 0.38 + 0.30 * shape, pos.y);
+  float heightProfile = base * dome;
+
+  // Rain: merges clouds into a dense stormy overcast deck
+  float threshold = mix(0.38, 0.12, rain);
+  float density = smoothstep(threshold, threshold + 0.32, shape) * heightProfile;
+
+  return density;
+}
+
 vec4 renderCloudsRounded(
-    vec3 vDir, vec3 vPos, float rain, float time, vec3 horizonCol, vec3 zenithCol,
+    vec3 vDir, vec3 vPos, float rain, float time, vec3 horizonCol, vec3 zenithCol, float dayFactor,
     const int steps, const float thickness, const float thickness_rain, const float speed,
     const vec2 scale, const float density, const vec2 boxiness
 ) {
@@ -99,11 +121,23 @@ vec4 renderCloudsRounded(
     d.y = 1.0 - d.y;
   }
 
-  // BSL Stylized Dual-Tone Shading:
-  // d.y is normalized height across the cloud slice (0.0 bottom, 1.0 top)
-  vec3 bottomCol = mix(vec3(0.46, 0.52, 0.62), zenithCol * 0.85, 0.35);
-  vec3 topCol = mix(horizonCol * 0.7, vec3(1.15, 1.08, 0.96), 0.65);
-  vec3 cloudColor = mix(bottomCol, topCol, d.y * d.y);
+  // BSL Sunlit Cloud Shading:
+  float dawnFactor = 1.0 - dayFactor * dayFactor;
+  dawnFactor *= dawnFactor;
+
+  // Day: sunlit cream-white top; Sunset: brilliant golden-amber top
+  vec3 sunCloudTop = mix(vec3(1.22, 1.18, 1.10), horizonCol * 1.35, dawnFactor);
+  // Base underside: slate-blue ambient shadow; Sunset: warm mauve-slate
+  vec3 ambientCloudBottom = mix(vec3(0.50, 0.58, 0.70), zenithCol * 0.9, 0.45);
+  ambientCloudBottom = mix(ambientCloudBottom, vec3(0.35, 0.28, 0.42), dawnFactor);
+
+  // Rain: dark stormy slate-teal overcast
+  sunCloudTop = mix(sunCloudTop, vec3(0.42, 0.48, 0.52), rain);
+  ambientCloudBottom = mix(ambientCloudBottom, vec3(0.28, 0.34, 0.38), rain);
+
+  // Vertical light penetration: top is illuminated, bottom in shadow
+  float lightGrad = smoothstep(0.15, 0.85, d.y);
+  vec3 cloudColor = mix(ambientCloudBottom, sunCloudTop, lightGrad);
 
   vec4 col = vec4(cloudColor, d.x);
   col.rgb *= 1.0 - 0.75 * rain;
@@ -171,6 +205,26 @@ vec4 renderAurora(vec3 p, float t, float rain, float dayFactor) {
 }
 #endif
 
+// BSL Cloud reflection on water surface
+vec4 renderCloudsReflection(nl_skycolor skycol, vec2 cloudPos, float rain, float t, float dayFactor) {
+  vec2 p = NL_CLOUD2_SCALE * (cloudPos + vec2(1.0, 0.5) * (t * NL_CLOUD2_VELOCITY));
+  float d = cloudDf(vec3(p.x, 0.5, p.y), rain, NL_CLOUD2_SHAPE);
+  if (d <= 0.01) {
+    return vec4(0.0, 0.0, 0.0, 0.0);
+  }
+
+  float dawnFactor = 1.0 - dayFactor * dayFactor;
+  dawnFactor *= dawnFactor;
+
+  vec3 sunCloudTop = mix(vec3(1.18, 1.14, 1.06), skycol.horizonEdge * 1.30, dawnFactor);
+  vec3 ambientCloudBottom = mix(vec3(0.50, 0.58, 0.70), skycol.zenith * 0.9, 0.45);
+  sunCloudTop = mix(sunCloudTop, vec3(0.42, 0.48, 0.52), rain);
+  ambientCloudBottom = mix(ambientCloudBottom, vec3(0.28, 0.34, 0.38), rain);
+
+  vec3 col = mix(ambientCloudBottom, sunCloudTop, 0.65);
+  return vec4(col, clamp(d * 1.6, 0.0, 0.92));
+}
+
 vec4 nlCloudAuroraReflection(nl_skycolor skycol, nl_environment env, vec3 viewDir, vec3 wPos, vec3 CAMERA_POS, highp float t) {
   vec2 cloudPos = wPos.xz;
   cloudPos += (187.0-(wPos.y+CAMERA_POS.y))*viewDir.xz/viewDir.y;
@@ -185,7 +239,11 @@ vec4 nlCloudAuroraReflection(nl_skycolor skycol, nl_environment env, vec3 viewDi
     refl = vec4(2.0*aurora.rgb*aurora.a, aurora.a);
   #endif
 
-  #if NL_CLOUD_TYPE == 1
+  #if NL_CLOUD_TYPE == 2
+    vec4 clouds = renderCloudsReflection(skycol, cloudPos, env.rainFactor, t, env.dayFactor);
+    clouds.a *= fade;
+    refl = vec4(mix(refl.rgb, clouds.rgb, clouds.a), min(refl.a + clouds.a, 1.0));
+  #elif NL_CLOUD_TYPE == 1
     vec4 clouds = renderCloudsSimple(skycol, cloudPos.xyy, t, env.rainFactor);
     clouds.a *= fade;
     refl = vec4(mix(refl.rgb, clouds.rgb, clouds.a), min(refl.a + clouds.a, 1.0));

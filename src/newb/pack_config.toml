@@ -84,6 +84,15 @@ No wave effects
 #'''
 
 [[subpack]]
+define = "SSR"
+materials = ["RenderChunk"]
+description = '''
+Screen-Space Reflections (CustomBuffer)
+§b- Real-time SSR water reflections & shoreline depth foam
+§eRequires LeviLauncher + CustomBuffers mod
+'''
+
+[[subpack]]
 define = "DEFAULT"
 materials = []
 description = '''

@@ -105,8 +105,18 @@ vec3 renderOverworldSky(nl_skycolor skyCol, nl_environment env, vec3 viewDir, bo
   vec3 sky = mix(skyCol.horizon, skyCol.horizonEdge, gradient1*df*df);
   sky = mix(skyCol.zenith, sky, gradient2*df);
 
-  sky *= 0.5+0.5*gradient2;
+  sky *= mix(0.85, 1.0, gradient2);
   sky *= (1.0 + (2.0*mg8 + 7.0*mg8*mg8)*mask)*mix(1.0, mask, NL_SKY_VOID_DARKNESS);
+
+  // BSL Atmospheric Solar Glare / Bloom
+  float sunDot = max(dot(env.sunDir, viewDir), 0.0);
+  float sunGlare = pow(sunDot, 5.0);
+  float sunCorona = pow(sunDot, 28.0);
+  float sunBloom = (sunGlare * 0.40 + sunCorona * 1.6) * (1.0 - 0.92 * env.rainFactor) * mask;
+
+  // Day: soft warm ivory glow; Sunset: fiery golden-amber halo (Image 3)
+  vec3 sunGlowCol = mix(vec3(1.15, 1.08, 0.92), skyCol.horizonEdge * 1.35, dawnFactor);
+  sky += sunGlowCol * sunBloom;
 
   if (!isSkyPlane) {
     float source = max(0.0, (mg8-0.22)/0.78);

@@ -2,7 +2,7 @@ $input a_color0, a_position, a_texcoord0, a_texcoord1
 #ifdef INSTANCING
   $input i_data0, i_data1, i_data2, i_data3
 #endif
-$output v_color0, v_color1, v_fog, v_refl, v_texcoord0, v_lightmapUV, v_extra
+$output v_color0, v_color1, v_fog, v_refl, v_texcoord0, v_lightmapUV, v_extra, v_position
 
 #include <bgfx_shader.sh>
 #include <newb/main.sh>
@@ -100,7 +100,8 @@ void main() {
     color = vec4(color.www, 1.0);
   #else
     if (isColored) {
-      color.rgb *= color.rgb*1.2;
+      // Natural BSL foliage tone: soft linear contrast curve preserving natural chromatic balance
+      color.rgb = pow(color.rgb, vec3_splat(1.35)) * 1.05;
     }
   #endif
 
@@ -186,10 +187,12 @@ void main() {
   v_color0 = color;
   v_color1 = a_color0;
   v_fog = fogColor;
+  v_position = worldPos;
 
   #else
 
   vec4 pos = mul(u_viewProj, vec4(worldPos, 1.0));
+  v_position = vec3_splat(0.0);
 
   #endif
 

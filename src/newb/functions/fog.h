@@ -3,16 +3,21 @@
 
 float nlRenderFogFade(float relativeDist, vec3 FOG_COLOR, vec2 FOG_CONTROL) {
   #ifdef NL_FOG
-    // BSL Atmospheric Exponential Fog (soft transition without harsh banding)
-    float fogStart = FOG_CONTROL.x * 0.55;
-    float fogEnd = FOG_CONTROL.y;
-    float d = clamp((relativeDist - fogStart) / (fogEnd - fogStart), 0.0, 1.0);
-    float fade = 1.0 - exp(-d * d * 3.0);
+    // Detect rain from FOG_CONTROL: clear weather y=1.0, rain y=0.70
+    float rain = clamp((0.96 - FOG_CONTROL.y) / 0.25, 0.0, 1.0);
+
+    // BSL Atmospheric Exponential Fog
+    // On clear days: soft gradual fade into distant sky (Image 1 & 4)
+    // On rainy days: dense moody slate-teal fog blanketing the scene (Image 2)
+    float fogStart = FOG_CONTROL.x * mix(0.55, 0.20, rain);
+    float fogEnd = mix(FOG_CONTROL.y, FOG_CONTROL.y * 0.75, rain);
+    float d = clamp((relativeDist - fogStart) / max(fogEnd - fogStart, 0.001), 0.0, 1.0);
+    float fade = 1.0 - exp(-d * d * mix(3.0, 5.5, rain));
     fade = smoothstep(0.0, 1.0, fade);
 
-    // Soft atmospheric mist depth
-    float density = NL_MIST_DENSITY * (14.0 - 13.0 * FOG_COLOR.g);
-    fade += (1.0 - fade) * (0.28 - 0.28 * exp(-relativeDist * relativeDist * density));
+    // Atmospheric mist depth / low humidity haze
+    float density = NL_MIST_DENSITY * mix(7.0, 22.0, rain);
+    fade += (1.0 - fade) * mix(0.25, 0.60, rain) * (1.0 - exp(-relativeDist * relativeDist * density));
 
     return clamp(NL_FOG * fade, 0.0, 1.0);
   #else
