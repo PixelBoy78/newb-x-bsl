@@ -47,10 +47,10 @@ void main() {
   diffuse.rgb += glow;
 
   if (v_extra.b > 0.9) {
-    diffuse.rgb += v_refl.rgb*v_refl.a;
-
     #if defined(TRANSPARENT) && defined(NL_SSR)
-      nlApplySSR(diffuse, v_position, ViewPositionAndTime.xyz, ViewPositionAndTime.w, s_LightMapTexture, v_lightmapUV, v_fog.a);
+      nlApplySSR(diffuse, v_refl, v_position, ViewPositionAndTime.xyz, ViewPositionAndTime.w, s_LightMapTexture, v_lightmapUV, v_fog.a);
+    #else
+      diffuse.rgb += v_refl.rgb*v_refl.a;
     #endif
   } else if (v_refl.a > 0.0) {
     // reflective effect - only on xz plane

@@ -6,7 +6,7 @@
 SAMPLER2D_AUTOREG(s_ScreenBuffer);
 SAMPLER2D_AUTOREG(s_SceneDepthBuffer);
 
-// Noise functions for water ripples and shoreline foam
+// Hash and noise for shoreline foam
 float foamHash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -22,7 +22,7 @@ float foamNoise(vec2 p) {
   );
 }
 
-// Convert depth buffer value (0..1) to linear view distance (blocks)
+// Convert depth buffer value (0..1) to linear view distance in blocks
 float sceneDepthLinear(float d) {
   #ifdef SCENE_DEPTH_REVERSED
     d = 1.0 - d;
@@ -33,6 +33,7 @@ float sceneDepthLinear(float d) {
 
 void nlApplySSR(
   inout vec4 diffuse,
+  vec4 v_refl,
   vec3 wPos,
   vec3 camPos,
   float time,
@@ -40,48 +41,109 @@ void nlApplySSR(
   vec2 lightmapUV,
   float fogAlpha
 ) {
-  // Screen-space water reflections on top faces
   vec3 viewDir = normalize(wPos - camPos);
   vec3 faceNormal = normalize(cross(dFdx(wPos), dFdy(wPos)));
 
+  // Water screen-space reflections on horizontal top faces
   if (abs(faceNormal.y) > 0.85 && viewDir.y < 0.0) {
-    vec2 rp = wPos.xz * 1.7;
-    vec2 rippleA = vec2(foamNoise(rp + vec2(time * 0.4, time * 0.3)), foamNoise(rp - vec2(time * 0.3, time * 0.5) + 7.3)) - 0.5;
-    vec2 rippleB = vec2(foamNoise(rp * 2.9 - vec2(time * 0.7, time * 0.2) + 3.1), foamNoise(rp * 2.9 + vec2(time * 0.2, time * 0.6) + 11.7)) - 0.5;
-    vec2 tilt = (rippleA + rippleB * 0.5) * NL_SSR_RIPPLE;
+    // Smooth sinusoidal water ripples (BSL & Rinloid style for organic reflection curvature)
+    vec2 wavePos = wPos.xz * 0.45;
+    float wt = time * 0.7;
+    vec2 waveNorm;
+    waveNorm.x = sin(wavePos.x * 1.5 + wt * 1.4 + sin(wavePos.y * 1.2)) * 0.6
+               + cos(wavePos.x * 3.1 - wt * 2.0 + wavePos.y * 1.8) * 0.4;
+    waveNorm.y = cos(wavePos.y * 1.5 + wt * 1.3 + cos(wavePos.x * 1.1)) * 0.6
+               + sin(wavePos.y * 3.1 - wt * 1.8 + wavePos.x * 1.7) * 0.4;
+
+    vec2 tilt = waveNorm * NL_SSR_RIPPLE;
     vec3 normal = normalize(vec3(tilt.x, 1.0, tilt.y));
     vec3 refl = reflect(viewDir, normal);
-    refl.y = max(refl.y, 0.02);
+    refl.y = max(refl.y, 0.01);
 
-    // Project reflected ray into screen space
-    vec4 clip = mul(u_viewProj, vec4(wPos + refl * NL_SSR_REFLECT_DIST, 1.0));
-    if (clip.w > 0.0) {
-      vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
-      #ifdef SCREEN_BUFFER_FLIP_Y
-        uv.y = 1.0 - uv.y;
-      #endif
+    // Rinloid Schlick 5th-power Fresnel calculation
+    float cosTheta = 1.0 - abs(dot(viewDir, normal));
+    float fresnel = clamp(cosTheta * 1.1, 0.0, 1.0);
+    float F = fresnel * fresnel * fresnel * fresnel * fresnel; // pow(cosTheta, 5.0)
 
-      // Edge fade and mirrored boundary handling
-      vec2 past = max(-uv, uv - 1.0);
-      float over = max(past.x, past.y);
-      vec2 m = clamp(1.0 - abs(1.0 - abs(uv)), 0.002, 0.998);
-      float k = NL_SSR_STRENGTH * (1.0 - smoothstep(0.0, NL_SSR_EDGE_FADE, max(over, 0.0)));
-      #ifdef NL_SSR_FRESNEL
-        k *= mix(0.25, 1.0, pow(1.0 - clamp(-viewDir.y, 0.0, 1.0), 3.0));
-      #endif
-      k *= 1.0 - fogAlpha;
+    // Raymarching in screen space with SceneDepthBuffer
+    vec2 hitUV = vec2(0.5, 0.5);
+    bool hit = false;
 
-      // 5-tap blur sampling for smooth reflections
-      vec2 o = vec2(NL_SSR_BLUR, NL_SSR_BLUR) + tilt * 0.05;
-      vec3 reflected = texture2D(s_ScreenBuffer, m).rgb * 0.4
+    #ifdef NL_SSR_RAYMARCH
+      const int NUM_STEPS = 6;
+      float stepLen = NL_SSR_REFLECT_DIST / float(NUM_STEPS);
+      for (int i = 1; i <= NUM_STEPS; i++) {
+        vec3 p = wPos + refl * (float(i) * stepLen);
+        vec4 c = mul(u_viewProj, vec4(p, 1.0));
+        if (c.w > 0.0) {
+          vec2 suv = c.xy / c.w * 0.5 + 0.5;
+          #ifdef SCREEN_BUFFER_FLIP_Y
+            suv.y = 1.0 - suv.y;
+          #endif
+          if (suv.x >= 0.005 && suv.x <= 0.995 && suv.y >= 0.005 && suv.y <= 0.995) {
+            float sceneD = sceneDepthLinear(texture2D(s_SceneDepthBuffer, suv).r);
+            float rayD = sceneDepthLinear(c.z / c.w);
+            if (rayD >= sceneD && (rayD - sceneD) < (stepLen * 1.6)) {
+              hitUV = suv;
+              hit = true;
+              break;
+            }
+          }
+        }
+      }
+    #endif
+
+    // Fallback: project at maximum reflection distance if raymarch finds no occluder
+    if (!hit) {
+      vec4 clip = mul(u_viewProj, vec4(wPos + refl * NL_SSR_REFLECT_DIST, 1.0));
+      if (clip.w > 0.0) {
+        hitUV = clip.xy / clip.w * 0.5 + 0.5;
+        #ifdef SCREEN_BUFFER_FLIP_Y
+          hitUV.y = 1.0 - hitUV.y;
+        #endif
+        if (hitUV.x >= 0.0 && hitUV.x <= 1.0 && hitUV.y >= 0.0 && hitUV.y <= 1.0) {
+          hit = true;
+        }
+      }
+    }
+
+    // Screen edge vignette fade
+    vec2 past = max(-hitUV, hitUV - vec2(1.0, 1.0));
+    float over = max(past.x, past.y);
+    float edgeFactor = 1.0 - smoothstep(0.0, NL_SSR_EDGE_FADE, max(over, 0.0));
+    vec2 m = clamp(hitUV, 0.002, 0.998);
+
+    // Sample ScreenBuffer: 0.0 blur = razor sharp crystal-clear reflection (Rinloid style)
+    #if defined(NL_SSR_BLUR) && NL_SSR_BLUR > 0.0001
+      vec2 o = vec2(NL_SSR_BLUR, NL_SSR_BLUR);
+      vec3 screenRefl = texture2D(s_ScreenBuffer, m).rgb * 0.4
         + texture2D(s_ScreenBuffer, clamp(m + vec2(o.x, o.y), 0.002, 0.998)).rgb * 0.15
         + texture2D(s_ScreenBuffer, clamp(m + vec2(-o.x, o.y), 0.002, 0.998)).rgb * 0.15
         + texture2D(s_ScreenBuffer, clamp(m + vec2(o.x, -o.y), 0.002, 0.998)).rgb * 0.15
         + texture2D(s_ScreenBuffer, clamp(m + vec2(-o.x, -o.y), 0.002, 0.998)).rgb * 0.15;
+    #else
+      vec3 screenRefl = texture2D(s_ScreenBuffer, m).rgb;
+    #endif
 
-      reflected *= mix(vec3_splat(1.0), clamp(diffuse.rgb * 2.0, 0.0, 1.0) * 0.7 + 0.3, NL_SSR_TINT);
-      diffuse.rgb = mix(diffuse.rgb, reflected, k);
-    }
+    // Subtle water absorption tint
+    screenRefl *= mix(vec3_splat(1.0), clamp(diffuse.rgb * 1.8, 0.0, 1.0) * 0.6 + 0.4, NL_SSR_TINT);
+
+    // Rinloid Fallback: seamlessly transition to BSL sky + cumulus clouds where screen ends
+    vec3 skyFallback = v_refl.rgb;
+    vec3 finalRefl = mix(skyFallback, screenRefl, edgeFactor * (hit ? 1.0 : 0.0));
+
+    // Blend reflection into water color using Rinloid Fresnel
+    float reflStrength = NL_SSR_STRENGTH * F * (1.0 - fogAlpha);
+    diffuse.rgb = mix(diffuse.rgb, finalRefl, clamp(reflStrength, 0.0, 0.95));
+
+    // Preserve sun & moon specular glint from v_refl
+    diffuse.rgb += v_refl.rgb * (v_refl.a * 0.5);
+
+    // Rinloid Water Opacity Boost: increases alpha at grazing angles to eliminate riverbed ghosting
+    diffuse.a = mix(diffuse.a, 0.95, clamp(F * 0.90, 0.0, 0.95));
+  } else {
+    // Non-horizontal faces fallback to standard reflection
+    diffuse.rgb += v_refl.rgb * v_refl.a;
   }
 
   #ifdef NL_SSR_FOAM

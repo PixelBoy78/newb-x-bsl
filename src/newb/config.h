@@ -251,21 +251,22 @@
 #define NL_LAVA_NOISE_SPEED 0.2  // 0.0 still ~ 0.8 fast
 
 /* Screen-Space Reflections & Shoreline Foam (CustomBuffers mod for LeviLauncher) */
-#define NL_SSR_STRENGTH 0.85
-#define NL_SSR_RIPPLE 0.10     // Ripple wave distortion in reflections
-#define NL_SSR_BLUR 0.003      // Multi-tap blur for soft reflection edges
-#define NL_SSR_TINT 0.35       // Water color tint blend into reflection
-#define NL_SSR_EDGE_FADE 0.25  // Edge vignette fade distance
-#define NL_SSR_REFLECT_DIST 24.0
-#define NL_SSR_FRESNEL         // Stronger reflection at grazing angles
-#define NL_SSR_FOAM            // Shoreline depth foam
-#define SCENE_DEPTH_NEAR 0.05  // Camera near plane
-#define SCENE_DEPTH_FAR 512.0  // Camera far plane
-#define NL_SSR_FOAM_WIDTH 0.9  // Foam width in blocks
-#define NL_SSR_FOAM_SPEED 0.6  // Foam animation speed
-#define NL_SSR_FOAM_SCALE 2.5  // Foam noise scale
-//#define SCREEN_BUFFER_FLIP_Y // Uncomment if upside down
-//#define SCENE_DEPTH_REVERSED // Uncomment if depth is reversed
+#define NL_SSR_STRENGTH 0.92      // 0.0 off ~ 1.0 full reflection
+#define NL_SSR_RIPPLE 0.040       // Wave ripple displacement (subtle for clear mirror finish)
+#define NL_SSR_BLUR 0.0           // 0.0 razor sharp (Rinloid style) ~ 0.005 soft blur
+#define NL_SSR_TINT 0.15          // 0.0 pure mirror ~ 0.5 water color tint
+#define NL_SSR_EDGE_FADE 0.20     // Edge vignette fade distance into sky
+#define NL_SSR_REFLECT_DIST 32.0  // Maximum ray projection distance
+#define NL_SSR_RAYMARCH           // [toggle] 6-step screen-space depth raymarch for true reflections
+#define NL_SSR_FRESNEL            // [toggle] Schlick 5th-power Fresnel with opacity boost
+#define NL_SSR_FOAM               // [toggle] Shoreline depth foam
+#define SCENE_DEPTH_NEAR 0.05     // Camera near plane
+#define SCENE_DEPTH_FAR 512.0     // Camera far plane
+#define NL_SSR_FOAM_WIDTH 0.85    // Foam width in blocks
+#define NL_SSR_FOAM_SPEED 0.60    // Foam animation speed
+#define NL_SSR_FOAM_SCALE 2.5     // Foam noise scale
+//#define SCREEN_BUFFER_FLIP_Y    // Uncomment if upside down
+//#define SCENE_DEPTH_REVERSED    // Uncomment if depth is reversed
 
 /*
   NEWB SHADER SUBPACK CONFIG
